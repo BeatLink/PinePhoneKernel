@@ -35,6 +35,24 @@
     fetchFromGitea,
     fetchpatch,
     mobile-nixos,
+
+    # NixOS' kernel module calls `.override` on whatever it is given, to fold in
+    # boot.kernelPatches, boot.kernelParams-driven features and the randstruct
+    # seed:
+    #
+    #   kernel = super.kernel.override (originalArgs: {
+    #     inherit randstructSeed;
+    #     kernelPatches = (originalArgs.kernelPatches or []) ++ kernelPatches;
+    #     features = lib.recursiveUpdate super.kernel.features features;
+    #   });
+    #
+    # callPackage makes `.override` match *this* function's signature, so these
+    # have to be accepted and forwarded or any consumer using
+    # nixosModules.default fails with "called with unexpected argument
+    # 'features'". Defaults match what this kernel provides on its own.
+    randstructSeed ? "",
+    kernelPatches ? [ ],
+    features ? { efiBootStub = true; },
 }:
 let
     kernelDir = "${mobile-nixos}/devices/pine64-pinephone/kernel";
@@ -90,6 +108,30 @@ let
         '') injectedLines
     );
 
+    # Carried from mobile-nixos' device directory and postmarketOS' pmaports.
+    devicePatches = [
+        {
+            name = "pinephone-default-on-and-panic-leds";
+            patch = "${kernelDir}/0001-dts-pinephone-Setup-default-on-and-panic-LEDs.patch";
+        }
+        {
+            # Reserves 128MiB of CMA, documented as required for the cameras.
+            name = "pinephone-128mib-cma";
+            patch = fetchpatch {
+                url = "https://github.com/mobile-nixos/linux/commit/372597b5449b7e21ad59dba0842091f4f1ed34b2.patch";
+                sha256 = "1lca3fdmx2wglplp47z2d1030bgcidaf1fhbnfvkfwk3fj3grixc";
+            };
+        }
+        {
+            # Drops modem-power from the DT so eg25-manager has full control.
+            name = "pinephone-drop-modem-power";
+            patch = fetchpatch {
+                url = "https://gitlab.com/postmarketOS/pmaports/-/raw/164e9f010dcf56642d8e6f422a994b927ae23f38/device/main/linux-postmarketos-allwinner/0007-dts-pinephone-drop-modem-power-node.patch";
+                sha256 = "nYCoaYj8CuxbgXfy5q43Xb/ebe5DlJ1Px571y1/+lfQ=";
+            };
+        }
+    ];
+
     kernel = linuxManualConfig {
         inherit configfile;
         version = "6.17.5";
@@ -104,37 +146,19 @@ let
 
         config = readConfig baseConfig // injected;
 
-        # The systemd-boot module asserts `features ? efiBootStub` and fails with
-        # "This kernel does not support the EFI boot stub" otherwise. It is a
-        # claim about the kernel rather than a switch, so it has to agree with
-        # the CONFIG_EFI injection above or the assertion is a lie that surfaces
-        # at boot instead of at evaluation.
-        features = {
-            efiBootStub = true;
-        };
+        # `features` carries efiBootStub by default: the systemd-boot module
+        # asserts `features ? efiBootStub` and fails with "This kernel does not
+        # support the EFI boot stub" otherwise. It is a claim about the kernel
+        # rather than a switch, so it has to agree with the CONFIG_EFI injection
+        # above, or the assertion is a lie that surfaces at boot instead of at
+        # evaluation. Defaulted in the signature so NixOS can recursiveUpdate
+        # its own features onto it.
+        inherit features randstructSeed;
 
-        kernelPatches = [
-            {
-                name = "pinephone-default-on-and-panic-leds";
-                patch = "${kernelDir}/0001-dts-pinephone-Setup-default-on-and-panic-LEDs.patch";
-            }
-            {
-                # Reserves 128MiB of CMA, documented as required for the cameras.
-                name = "pinephone-128mib-cma";
-                patch = fetchpatch {
-                    url = "https://github.com/mobile-nixos/linux/commit/372597b5449b7e21ad59dba0842091f4f1ed34b2.patch";
-                    sha256 = "1lca3fdmx2wglplp47z2d1030bgcidaf1fhbnfvkfwk3fj3grixc";
-                };
-            }
-            {
-                # Drops modem-power from the DT so eg25-manager has full control.
-                name = "pinephone-drop-modem-power";
-                patch = fetchpatch {
-                    url = "https://gitlab.com/postmarketOS/pmaports/-/raw/164e9f010dcf56642d8e6f422a994b927ae23f38/device/main/linux-postmarketos-allwinner/0007-dts-pinephone-drop-modem-power-node.patch";
-                    sha256 = "nYCoaYj8CuxbgXfy5q43Xb/ebe5DlJ1Px571y1/+lfQ=";
-                };
-            }
-        ];
+        # Device patches first, then whatever the importing system added through
+        # boot.kernelPatches. `kernelPatches` on the right is the function
+        # argument, not this attribute -- the set is not recursive.
+        kernelPatches = devicePatches ++ kernelPatches;
     };
 in
 kernel.overrideAttrs (old: {

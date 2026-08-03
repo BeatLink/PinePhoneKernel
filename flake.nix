@@ -24,7 +24,14 @@
             system = "aarch64-linux";
             pkgs = nixpkgs.legacyPackages.${system};
 
-            kernel = pkgs.callPackage ./kernel.nix { inherit mobile-nixos; };
+            # kernelPatches must be passed explicitly: nixpkgs has a top-level
+            # `kernelPatches` attribute (a set of named patches), which
+            # callPackage would otherwise auto-fill over the default, giving
+            # "expected a list but found a set".
+            kernel = pkgs.callPackage ./kernel.nix {
+                inherit mobile-nixos;
+                kernelPatches = [ ];
+            };
         in
         {
             packages.${system} = {
@@ -36,7 +43,10 @@
             # take the cached artifact. Note this gives up the cache: a different
             # nixpkgs means a different stdenv means a different derivation.
             overlays.default = _final: prev: {
-                linux-pinephone-megi = prev.callPackage ./kernel.nix { inherit mobile-nixos; };
+                linux-pinephone-megi = prev.callPackage ./kernel.nix {
+                    inherit mobile-nixos;
+                    kernelPatches = [ ];
+                };
             };
 
             # Deliberately uses self.packages rather than rebuilding against the

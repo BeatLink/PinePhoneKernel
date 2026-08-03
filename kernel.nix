@@ -91,6 +91,29 @@ let
         #               above.
         CONFIG_AUTOFS_FS = "y";
         CONFIG_DMIID = "y";
+
+        # The keyboard case. megi's tree carries both the driver and the device
+        # tree node for it, but mobile-nixos' config leaves the driver off, so
+        # the hardware is described and nothing binds to it.
+        #
+        # The DT node is the part that matters and cannot be replicated by hand:
+        #
+        #     ppkb: keyboard@15 {
+        #         compatible = "pine64,pinephone-keyboard";
+        #         interrupt-parent = <&r_pio>;
+        #         interrupts = <0 12 IRQ_TYPE_EDGE_FALLING>;  /* PL12 */
+        #         i2c { charger@75 { compatible = "injoinic,ip5209"; ... }; };
+        #     };
+        #
+        # Instantiating the device from userspace over i2c gets as far as an
+        # input device and then dies on `request_irq: -22`, because new_device
+        # can supply a bus and an address but not an interrupt. The nested i2c
+        # node is the case's IP5209 behind the keyboard's passthrough, which is
+        # what IP5XXX_POWER binds to -- so this also brings up the case battery.
+        #
+        # CRC8 and INPUT_MATRIXKMAP are `select`ed by this option; I2C and
+        # REGULATOR are already =y.
+        CONFIG_KEYBOARD_PINEPHONE = "y";
     };
 
     injectedLines = lib.mapAttrsToList (name: value: "${name}=${value}") injected;

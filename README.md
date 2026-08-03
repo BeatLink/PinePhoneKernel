@@ -33,7 +33,7 @@ Mainline boots on a PinePhone, but several things do not work:
 | ---------------------------------------------------- | ------------------------------ | ------------------------ |
 | **Charging**                                   | **broken above ~14 °C** | works                    |
 | WiFi (RTL8723CS)                                     | no driver                      | `CONFIG_RTL8723CS`     |
-| USB-C role switching, USB-PD, DisplayPort alt mode   | no ANX7688 driver | `CONFIG_TYPEC_ANX7688`, `CONFIG_TYPEC_DP_ALTMODE` |
+| USB-C role switching, USB-PD, DisplayPort alt mode   | no ANX7688 driver | `CONFIG_TYPEC_ANX7688` |
 | Keyboard case (keys and its battery) | —                             | `CONFIG_KEYBOARD_PINEPHONE`, `CONFIG_IP5XXX_POWER` |
 | PinePhone device trees, incl. the keyboard accessory | partial                        | complete                 |
 
@@ -81,7 +81,7 @@ doing either.
 
 **No kernel code here is AI-written.** The kernel is
 [megi&#39;s tree](https://codeberg.org/megi/linux), unmodified apart from the
-changes documented under [what is on top](#what-is-on-top-of-megis-tree): six
+changes documented under [what is on top](#what-is-on-top-of-megis-tree): five
 appended config options, and flipping one `#undef` to `#define` in
 `regmap-debugfs.c`. All are listed in full with reasons. What was
 AI-written is the Nix expression that fetches, configures and builds it, and the
@@ -166,7 +166,7 @@ Three patches carried from mobile-nixos' device directory — default-on and pan
 LEDs, 128 MiB of CMA for the cameras, and dropping `modem-power` from the DT so
 `eg25-manager` has full control.
 
-Six config options are appended to megi's config. Kconfig takes the last
+Five config options are appended to megi's config. Kconfig takes the last
 assignment of a symbol, so these override without editing anyone's file, and
 each is asserted after `oldconfig` — which drops options with unmet dependencies
 *silently*, so an unchecked injection yields a kernel that quietly lacks what
@@ -178,7 +178,6 @@ was asked for:
 | `CONFIG_AUTOFS_FS` | systemd's initrd puts `autofs` in `availableKernelModules`, and `makeModulesClosure` runs with `allowMissing = false`, so the build dies outright without it |
 | `CONFIG_DMIID` | `/sys/class/dmi/id`; on arm64 DMI comes from EFI, so it is only reachable because of the above |
 | `CONFIG_KEYBOARD_PINEPHONE` | megi's tree carries the driver **and** the DT node for the keyboard case, but the config leaves the driver off — the hardware is fully described and nothing binds to it |
-| `CONFIG_TYPEC_DP_ALTMODE` | ANX7688 registers the Type-C port, but the DisplayPort alt mode driver is a separate option and was off, so alt mode had nothing to negotiate with |
 
 `AUTOFS_FS` and `DMIID` are precisely the entries left unmet when NixOS'
 `system.requiredKernelConfig` is checked against megi's config — NixOS

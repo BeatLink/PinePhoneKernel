@@ -74,6 +74,23 @@ let
     injected = {
         CONFIG_EFI = "y";
         CONFIG_EFI_STUB = "y";
+
+        # NixOS' system.requiredKernelConfig, checked against megi's config,
+        # comes out with exactly two unmet entries. Both are NixOS expectations
+        # rather than PinePhone ones, which is why a config aimed at
+        # postmarketOS has no reason to carry them.
+        #
+        #   AUTOFS_FS   systemd's initrd requires it -- see
+        #               nixos/modules/system/boot/systemd/initrd.nix, which puts
+        #               "autofs" in boot.initrd.availableKernelModules. Without
+        #               it makeModulesClosure fails outright, since it runs with
+        #               allowMissing = false:
+        #                   modprobe: FATAL: Module autofs not found
+        #   DMIID       exposes /sys/class/dmi/id. On arm64 DMI comes from EFI,
+        #               so this is only reachable at all because of CONFIG_EFI
+        #               above.
+        CONFIG_AUTOFS_FS = "y";
+        CONFIG_DMIID = "y";
     };
 
     injectedLines = lib.mapAttrsToList (name: value: "${name}=${value}") injected;

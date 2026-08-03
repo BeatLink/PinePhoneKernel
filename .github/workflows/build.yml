@@ -62,8 +62,14 @@ jobs:
           fi
           echo "signing key present"
 
-      - name: Build kernel
-        run: nix build .#linux-pinephone-megi --print-build-logs
+      # ^* selects ALL outputs. This kernel has three -- out, dev and modules --
+      # and a plain `.#linux-pinephone-megi` means only `out`. Publishing just
+      # that looks like it works, because the kernel image substitutes fine, and
+      # then every consumer silently rebuilds the whole kernel to recover the
+      # missing outputs: `modules` holds the modules themselves and `dev` is the
+      # build tree that out-of-tree modules such as ZFS compile against.
+      - name: Build kernel (all outputs)
+        run: nix build '.#linux-pinephone-megi^*' --print-build-logs
 
       - name: Sign and export binary cache
         env:
@@ -78,9 +84,25 @@ jobs:
           # way out. This is the entire binary cache protocol -- no server.
           nix copy \
             --to "file://$PWD/site?compression=zstd&secret-key=/tmp/cache-priv-key.pem" \
-            .#linux-pinephone-megi
+            '.#linux-pinephone-megi^*'
 
           shred -u /tmp/cache-priv-key.pem
+
+          # Assert every output actually landed. Publishing a partial closure is
+          # the failure mode this whole step exists to avoid, and it is invisible
+          # from the outside: the cache answers 200 for the kernel image and 404
+          # for the build tree, so consumers rebuild everything without a word.
+          missing=0
+          for p in $(nix build --no-link --print-out-paths '.#linux-pinephone-megi^*'); do
+            h=$(basename "$p" | cut -d- -f1)
+            if [ -f "site/$h.narinfo" ]; then
+              echo "  ok      $(basename "$p")"
+            else
+              echo "::error::no narinfo published for $p"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
 
           cp README.md site/index.html 2>/dev/null || true
           echo "cache size: $(du -sh site | cut -f1)"

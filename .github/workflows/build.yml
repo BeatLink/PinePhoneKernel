@@ -1,0 +1,100 @@
+name: Build kernel and publish binary cache
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, to pick up nixpkgs. A toolchain or stdenv change gives a new
+    # derivation, so the cache goes cold on its own without this.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Pages allows one deployment at a time. Do not cancel in progress: a half
+# published cache is worse than a late one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Free native aarch64 for public repositories. Emulated x86_64 runners take
+    # several times longer for the same build.
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Runners ship ~25GB of toolchains this build has no use for, and a kernel
+      # tree plus its build output does not comfortably fit around them.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            # Our own cache is listed as a substituter so an unchanged
+            # derivation is fetched rather than rebuilt, turning a no-op week
+            # into a two minute job instead of an hour.
+            extra-substituters = https://beatlink.github.io/PinePhoneKernel
+            extra-trusted-public-keys = pinephone-kernel-1:Bh9JYKdNDBNwefy+ZrjHKjVUR453bPDXRMZ+kO9K33w=
+
+      # Checked before the build, not after. Discovering a missing secret at the
+      # signing step would mean an hour of compilation thrown away.
+      - name: Check signing key is available
+        env:
+          CACHE_PRIV_KEY: ${{ secrets.CACHE_PRIV_KEY }}
+        run: |
+          if [ -z "${CACHE_PRIV_KEY:-}" ]; then
+            echo "::error::CACHE_PRIV_KEY secret is not set. Generate with:"
+            echo "  nix-store --generate-binary-cache-key \\"
+            echo "    pinephone-kernel-1 cache-priv-key.pem cache-pub-key.pem"
+            echo "then add the private half as the CACHE_PRIV_KEY repository secret."
+            exit 1
+          fi
+          echo "signing key present"
+
+      - name: Build kernel
+        run: nix build .#linux-pinephone-megi --print-build-logs
+
+      - name: Sign and export binary cache
+        env:
+          CACHE_PRIV_KEY: ${{ secrets.CACHE_PRIV_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$CACHE_PRIV_KEY" > /tmp/cache-priv-key.pem
+
+          mkdir -p site
+          # Writes nix-cache-info, the .narinfo files and nar/, signed on the
+          # way out. This is the entire binary cache protocol -- no server.
+          nix copy \
+            --to "file://$PWD/site?compression=zstd&secret-key=/tmp/cache-priv-key.pem" \
+            .#linux-pinephone-megi
+
+          shred -u /tmp/cache-priv-key.pem
+
+          cp README.md site/index.html 2>/dev/null || true
+          echo "cache size: $(du -sh site | cut -f1)"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

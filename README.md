@@ -33,8 +33,8 @@ Mainline boots on a PinePhone, but several things do not work:
 | ---------------------------------------------------- | ------------------------------ | ------------------------ |
 | **Charging**                                   | **broken above ~14 °C** | works                    |
 | WiFi (RTL8723CS)                                     | no driver                      | `CONFIG_RTL8723CS`     |
-| USB-C role switching, USB-PD, DisplayPort alt mode   | no ANX7688 driver              | `CONFIG_TYPEC_ANX7688` |
-| Keyboard case battery                                | —                             | `CONFIG_IP5XXX_POWER`  |
+| USB-C role switching, USB-PD, DisplayPort alt mode   | no ANX7688 driver | `CONFIG_TYPEC_ANX7688`, `CONFIG_TYPEC_DP_ALTMODE` |
+| Keyboard case (keys and its battery) | —                             | `CONFIG_KEYBOARD_PINEPHONE`, `CONFIG_IP5XXX_POWER` |
 | PinePhone device trees, incl. the keyboard accessory | partial                        | complete                 |
 
 ### Why mainline cannot charge a PinePhone
@@ -80,10 +80,10 @@ add a binary cache to your system. You should be able to factor that in before
 doing either.
 
 **No kernel code here is AI-written.** The kernel is
-[megi&#39;s tree](https://codeberg.org/megi/linux), unmodified apart from the two
-changes documented under [what is on top](#what-is-on-top-of-megis-tree):
-appending `CONFIG_EFI`, and flipping one `#undef` to `#define` in
-`regmap-debugfs.c`. Both are quoted in full and are a few lines each. What was
+[megi&#39;s tree](https://codeberg.org/megi/linux), unmodified apart from the
+changes documented under [what is on top](#what-is-on-top-of-megis-tree): six
+appended config options, and flipping one `#undef` to `#define` in
+`regmap-debugfs.c`. All are listed in full with reasons. What was
 AI-written is the Nix expression that fetches, configures and builds it, and the
 prose you are reading.
 
@@ -164,12 +164,29 @@ cache but keeps everything on one nixpkgs revision.
 
 Three patches carried from mobile-nixos' device directory — default-on and panic
 LEDs, 128 MiB of CMA for the cameras, and dropping `modem-power` from the DT so
-`eg25-manager` has full control — plus two local changes:
+`eg25-manager` has full control.
 
-- **`CONFIG_EFI` / `CONFIG_EFI_STUB`.** megi ships EFI off, which suits the
-  extlinux boot postmarketOS uses. Booting through Tow-Boot's UEFI into
-  systemd-boot loads the kernel as an EFI application and needs the stub.
-  Harmless if you boot extlinux.
+Six config options are appended to megi's config. Kconfig takes the last
+assignment of a symbol, so these override without editing anyone's file, and
+each is asserted after `oldconfig` — which drops options with unmet dependencies
+*silently*, so an unchecked injection yields a kernel that quietly lacks what
+was asked for:
+
+| Option | Why |
+| --- | --- |
+| `CONFIG_EFI`, `CONFIG_EFI_STUB` | megi ships EFI off, suiting the extlinux boot postmarketOS uses. Booting through Tow-Boot's UEFI into systemd-boot loads the kernel as an EFI application and needs the stub. Harmless under extlinux. |
+| `CONFIG_AUTOFS_FS` | systemd's initrd puts `autofs` in `availableKernelModules`, and `makeModulesClosure` runs with `allowMissing = false`, so the build dies outright without it |
+| `CONFIG_DMIID` | `/sys/class/dmi/id`; on arm64 DMI comes from EFI, so it is only reachable because of the above |
+| `CONFIG_KEYBOARD_PINEPHONE` | megi's tree carries the driver **and** the DT node for the keyboard case, but the config leaves the driver off — the hardware is fully described and nothing binds to it |
+| `CONFIG_TYPEC_DP_ALTMODE` | ANX7688 registers the Type-C port, but the DisplayPort alt mode driver is a separate option and was off, so alt mode had nothing to negotiate with |
+
+`AUTOFS_FS` and `DMIID` are precisely the entries left unmet when NixOS'
+`system.requiredKernelConfig` is checked against megi's config — NixOS
+expectations rather than PinePhone ones, which is why a config aimed at
+postmarketOS has no reason to carry them.
+
+One source change on top of that:
+
 - **Regmap debugfs writes.** `regmap-debugfs.c` carries an `#undef` above its
   guard and a comment saying anyone who wants it must edit the source, so `-D` on
   the command line is discarded before it is read. Flipped to `#define`, which

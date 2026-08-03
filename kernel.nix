@@ -114,6 +114,17 @@ let
         # CRC8 and INPUT_MATRIXKMAP are `select`ed by this option; I2C and
         # REGULATOR are already =y.
         CONFIG_KEYBOARD_PINEPHONE = "y";
+
+        # DisplayPort alt mode. TYPEC_ANX7688 is what makes the Type-C port
+        # register at all, and without it there is no role detection, no USB-PD
+        # and nothing for an alt mode to negotiate against -- but the alt mode
+        # driver itself is a separate option and megi's config leaves it off.
+        # Only `depends on DRM`, which is =y.
+        #
+        # Enabling ANX7688 alone gets a Type-C port and no DisplayPort, which is
+        # a confusing place to stop given that alt mode is one of the three
+        # things the ANX7688 driver exists to unlock.
+        CONFIG_TYPEC_DP_ALTMODE = "y";
     };
 
     injectedLines = lib.mapAttrsToList (name: value: "${name}=${value}") injected;

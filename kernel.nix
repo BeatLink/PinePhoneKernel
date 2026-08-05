@@ -185,6 +185,17 @@ let
                 sha256 = "nYCoaYj8CuxbgXfy5q43Xb/ebe5DlJ1Px571y1/+lfQ=";
             };
         }
+        {
+            # The keyboard case's pack is a peripheral battery, so UPower should
+            # list it separately rather than folding it into the phone's total.
+            name = "ip5xxx-device-scope-and-model-name";
+            patch = ./patches/0001-ip5xxx-device-scope-and-model-name.patch;
+        }
+        {
+            # Gives the phone's own battery a name, so the two are told apart.
+            name = "axp20x-battery-model-name";
+            patch = ./patches/0002-axp20x-battery-model-name.patch;
+        }
     ];
 
     kernel = linuxManualConfig {

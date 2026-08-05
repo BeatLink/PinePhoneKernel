@@ -1,0 +1,31 @@
+From: BeatLink <pearson.pryce.p@gmail.com>
+Subject: [PATCH] power: supply: axp20x_battery: name the battery
+
+Both batteries showed up unnamed in Settings, which made the phone's own
+cell and the keyboard case's pack indistinguishable. UPower reads the model
+from the sysfs model_name attribute, which this driver did not export.
+
+Fork-specific: this driver also serves the axp209, axp221 and axp813, so the
+name only holds because this tree builds for one device.
+
+--- a/drivers/power/supply/axp20x_battery.c
++++ b/drivers/power/supply/axp20x_battery.c
+@@ -311,6 +311,10 @@
+ 	int ret = 0, reg, val1;
+ 
+ 	switch (psp) {
++	case POWER_SUPPLY_PROP_MODEL_NAME:
++		val->strval = "PinePhone";
++		return 0;
++
+ 	case POWER_SUPPLY_PROP_PRESENT:
+ 	case POWER_SUPPLY_PROP_ONLINE:
+ 		ret = regmap_read(axp20x_batt->regmap, AXP20X_PWR_OP_MODE,
+@@ -930,6 +934,7 @@
+ 	POWER_SUPPLY_PROP_CAPACITY,
+ 	POWER_SUPPLY_PROP_ENERGY_FULL_DESIGN,
+ 	POWER_SUPPLY_PROP_ENERGY_EMPTY_DESIGN,
++	POWER_SUPPLY_PROP_MODEL_NAME,
+ };
+ 
+ static enum power_supply_property axp717_battery_props[] = {

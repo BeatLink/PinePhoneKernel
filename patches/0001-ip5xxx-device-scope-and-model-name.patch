@@ -1,0 +1,46 @@
+From: BeatLink <pearson.pryce.p@gmail.com>
+Subject: [PATCH] power: supply: ip5xxx: report the keyboard pack as a device battery
+
+UPower sums every system-scope battery into its composite display device,
+so the shell showed a single percentage spanning the phone's 12Wh cell and
+the keyboard case's 25Wh pack -- 63% while the phone itself was at 26%. It
+takes the scope from the sysfs `scope` attribute, which this driver never
+exported, and a missing attribute is treated as system scope.
+
+The pack in the keyboard case powers a peripheral, which is what
+POWER_SUPPLY_SCOPE_DEVICE describes. Reporting it leaves UPower listing the
+pack as its own device while keeping it out of the total, so the top bar
+shows the phone's own charge.
+
+MODEL_NAME comes along because both batteries were otherwise anonymous in
+Settings, with nothing to say which was which.
+
+Fork-specific: ip5xxx is a generic power-bank driver, so upstream would want
+the scope to come from the device tree rather than be hardcoded.
+
+--- a/drivers/power/supply/ip5xxx_power.c
++++ b/drivers/power/supply/ip5xxx_power.c
+@@ -288,6 +288,8 @@
+ 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX,
+ 	POWER_SUPPLY_PROP_ENERGY_FULL_DESIGN,
+ 	POWER_SUPPLY_PROP_ENERGY_EMPTY_DESIGN,
++	POWER_SUPPLY_PROP_MODEL_NAME,
++	POWER_SUPPLY_PROP_SCOPE,
+ };
+ 
+ static int ip5xxx_battery_get_status(struct ip5xxx *ip5xxx, int *val)
+@@ -448,6 +450,14 @@
+ 		return ret;
+ 
+ 	switch (psp) {
++	case POWER_SUPPLY_PROP_MODEL_NAME:
++		val->strval = "Keyboard";
++		return 0;
++
++	case POWER_SUPPLY_PROP_SCOPE:
++		val->intval = POWER_SUPPLY_SCOPE_DEVICE;
++		return 0;
++
+ 	case POWER_SUPPLY_PROP_STATUS:
+ 		return ip5xxx_battery_get_status(ip5xxx, &val->intval);
+ 

@@ -128,12 +128,17 @@ jobs:
           set -euo pipefail
           tar -c --zstd -f binary-cache.tar.zst -C site .
 
-          # The tag is the commit, so a consumer can build the download URL from
-          # the flake revision it has locked without asking the API anything.
-          gh release create "${{ github.sha }}" \
+          # The tag carries the commit, so a consumer can build the download URL
+          # from the flake revision it has locked without asking the API
+          # anything. The cache- prefix is required, not decoration: GitHub
+          # refuses a tag that is exactly 40 or 64 hex characters, which a bare
+          # SHA is.
+          tag="cache-${{ github.sha }}"
+
+          gh release create "$tag" \
             --title "Kernel cache for ${{ github.sha }}" \
             --notes "Signed Nix binary cache for \`linux-pinephone-megi\` built from ${{ github.sha }}. Extract and use as a \`file://\` substituter." \
             || echo "release already exists, replacing the asset"
 
           # Clobber, because the weekly rebuild republishes the same commit.
-          gh release upload "${{ github.sha }}" binary-cache.tar.zst --clobber
+          gh release upload "$tag" binary-cache.tar.zst --clobber

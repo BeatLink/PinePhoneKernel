@@ -126,7 +126,7 @@ thousands.
 
 ## The binary cache
 
-Every commit gets a GitHub release tagged with its own SHA, carrying
+Every commit gets a GitHub release tagged `cache-<sha>`, carrying
 `binary-cache.tar.zst` — a complete, signed Nix binary cache holding all three
 kernel outputs. Download it, unpack it, and point Nix at the directory:
 
@@ -134,7 +134,7 @@ kernel outputs. Download it, unpack it, and point Nix at the directory:
 rev=$(nix flake metadata github:BeatLink/PinePhoneKernel --json | jq -r .revision)
 
 mkdir -p /tmp/pinephone-kernel-cache
-curl -fsSL "https://github.com/BeatLink/PinePhoneKernel/releases/download/$rev/binary-cache.tar.zst" \
+curl -fsSL "https://github.com/BeatLink/PinePhoneKernel/releases/download/cache-$rev/binary-cache.tar.zst" \
   | tar -x --zstd -C /tmp/pinephone-kernel-cache
 
 nix build github:BeatLink/PinePhoneKernel#linux-pinephone-megi \
@@ -150,9 +150,9 @@ your own network — is also the thing that scales.
 
 Two things worth knowing:
 
-- **The tag is the commit.** The URL is derivable from whatever revision you
-  have locked, with no API call, and pinning an older revision keeps working —
-  which it did not when each publish replaced the last.
+- **The tag carries the commit.** The URL is derivable from whatever revision
+  you have locked, with no API call, and pinning an older revision keeps
+  working — which it did not when each publish replaced the last.
 - **Out-of-tree modules are not cached.** ZFS and friends are built by
   `linuxPackagesFor` against *your* nixpkgs, so only the kernel comes from the
   cache. That is still the great majority of the build time.

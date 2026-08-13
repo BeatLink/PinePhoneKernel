@@ -3,8 +3,8 @@
 [![Build kernel and publish binary cache](https://github.com/BeatLink/PinePhoneKernel/actions/workflows/build.yml/badge.svg)](https://github.com/BeatLink/PinePhoneKernel/actions/workflows/build.yml)
 
 [megi&#39;s kernel](https://codeberg.org/megi/linux) — the tree postmarketOS ships —
-packaged as a NixOS flake, with a **public binary cache** so you do not spend
-several hours building aarch64.
+packaged as a NixOS flake, with a **signed binary cache published per commit** so
+you do not spend several hours building aarch64.
 
 > **If your PinePhone will not charge under NixOS, this is almost certainly why.**
 > It is a kernel bug, not a dead battery. See
@@ -101,7 +101,6 @@ prose you are reading.
       system = "aarch64-linux";
       modules = [
         pinephone-kernel.nixosModules.default      # the kernel
-        pinephone-kernel.nixosModules.binaryCache  # optional, see below
         ./configuration.nix
       ];
     };
@@ -127,23 +126,33 @@ thousands.
 
 ## The binary cache
 
-`nixosModules.binaryCache` configures it for you. It is a separate module so that
-importing a kernel never silently adds a substituter to your system. By hand:
+Every commit gets a GitHub release tagged with its own SHA, carrying
+`binary-cache.tar.zst` — a complete, signed Nix binary cache holding all three
+kernel outputs. Download it, unpack it, and point Nix at the directory:
 
-```nix
-nix.settings = {
-  extra-substituters = [ "https://beatlink.github.io/PinePhoneKernel" ];
-  extra-trusted-public-keys = [
-    "pinephone-kernel-1:Bh9JYKdNDBNwefy+ZrjHKjVUR453bPDXRMZ+kO9K33w="
-  ];
-};
+```sh
+rev=$(nix flake metadata github:BeatLink/PinePhoneKernel --json | jq -r .revision)
+
+mkdir -p /tmp/pinephone-kernel-cache
+curl -fsSL "https://github.com/BeatLink/PinePhoneKernel/releases/download/$rev/binary-cache.tar.zst" \
+  | tar -x --zstd -C /tmp/pinephone-kernel-cache
+
+nix build github:BeatLink/PinePhoneKernel#linux-pinephone-megi \
+  --extra-substituters "file:///tmp/pinephone-kernel-cache" \
+  --extra-trusted-public-keys "pinephone-kernel-1:Bh9JYKdNDBNwefy+ZrjHKjVUR453bPDXRMZ+kO9K33w="
 ```
 
-Two limitations, both deliberate:
+An asset rather than a hosted substituter, because a hosted one was the problem:
+this was served from GitHub Pages until it started answering HTTP 429 as soon as
+more than a machine or two pulled from it. A tarball has no rate limit, and the
+natural thing to do with it — unpack it once and re-serve it from a cache on
+your own network — is also the thing that scales.
 
-- **Latest revision only.** Each publish replaces the site, which keeps it inside
-  GitHub Pages' size limit. Pin an older revision of this flake and you build it
-  yourself.
+Two things worth knowing:
+
+- **The tag is the commit.** The URL is derivable from whatever revision you
+  have locked, with no API call, and pinning an older revision keeps working —
+  which it did not when each publish replaced the last.
 - **Out-of-tree modules are not cached.** ZFS and friends are built by
   `linuxPackagesFor` against *your* nixpkgs, so only the kernel comes from the
   cache. That is still the great majority of the build time.
@@ -223,17 +232,18 @@ nix-store --generate-binary-cache-key \
 ```
 
 - private half → repository secret `CACHE_PRIV_KEY`
-- public half → `README.md`, `flake.nix` (`nixosModules.binaryCache`) and
-  `.github/workflows/build.yml` (`extra-trusted-public-keys`); all three must
-  match or signature verification fails confusingly at the consumer
+- public half → `README.md` and `.github/workflows/build.yml`
+  (`extra-trusted-public-keys`); both must match or signature verification fails
+  confusingly at the consumer
 
-Pages must be set to **GitHub Actions** as its source. Never commit
-`cache-priv-key.pem`; `.gitignore` covers it.
+Publishing needs `contents: write`, which is how the workflow creates the
+release. Never commit `cache-priv-key.pem`; `.gitignore` covers it.
 
 CI builds on `ubuntu-24.04-arm` — free and native aarch64 for public
 repositories — and rebuilds weekly so the cache survives nixpkgs moving
-underneath it. The workflow lists this cache as one of its own substituters, so
-an unchanged derivation is fetched rather than rebuilt.
+underneath it. Before building it unpacks the most recent release into
+`/tmp/previous-cache` and passes that as a substituter, so an unchanged
+derivation is fetched rather than rebuilt.
 
 </details>
 

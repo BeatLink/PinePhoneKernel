@@ -10,14 +10,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# Pages allows one deployment at a time. Do not cancel in progress: a half
-# published cache is worse than a late one.
+# Do not cancel in progress: a half published cache is worse than a late one.
 concurrency:
-  group: pages
+  group: publish
   cancel-in-progress: false
 
 jobs:
@@ -41,11 +38,22 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
-            # Our own cache is listed as a substituter so an unchanged
-            # derivation is fetched rather than rebuilt, turning a no-op week
-            # into a two minute job instead of an hour.
-            extra-substituters = https://beatlink.github.io/PinePhoneKernel
-            extra-trusted-public-keys = pinephone-kernel-1:Bh9JYKdNDBNwefy+ZrjHKjVUR453bPDXRMZ+kO9K33w=
+
+      # The previously published cache becomes a local substituter, so an
+      # unchanged derivation is fetched rather than rebuilt -- a no-op week is a
+      # two minute job instead of an hour. Absent on the very first run.
+      - name: Seed the store from the last published cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/previous-cache
+          if gh release download --pattern binary-cache.tar.zst --dir /tmp --clobber; then
+            tar -x --zstd -f /tmp/binary-cache.tar.zst -C /tmp/previous-cache
+            echo "seeded $(ls /tmp/previous-cache/*.narinfo 2>/dev/null | wc -l) narinfos"
+          else
+            echo "no previous release to seed from"
+          fi
 
       # Checked before the build, not after. Discovering a missing secret at the
       # signing step would mean an hour of compilation thrown away.
@@ -69,7 +77,10 @@ jobs:
       # missing outputs: `modules` holds the modules themselves and `dev` is the
       # build tree that out-of-tree modules such as ZFS compile against.
       - name: Build kernel (all outputs)
-        run: nix build '.#linux-pinephone-megi^*' --print-build-logs
+        run: |
+          nix build '.#linux-pinephone-megi^*' --print-build-logs \
+            --extra-substituters "file:///tmp/previous-cache" \
+            --extra-trusted-public-keys "pinephone-kernel-1:Bh9JYKdNDBNwefy+ZrjHKjVUR453bPDXRMZ+kO9K33w="
 
       - name: Sign and export binary cache
         env:
@@ -104,19 +115,25 @@ jobs:
           done
           [ "$missing" -eq 0 ] || exit 1
 
-          cp README.md site/index.html 2>/dev/null || true
           echo "cache size: $(du -sh site | cut -f1)"
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
+      # A release asset rather than Pages: Pages answers HTTP 429 once more than
+      # a couple of machines pull from it, and it only ever holds the newest
+      # build. One release per commit means a pinned older revision still
+      # resolves, and consumers re-serve the asset from their own cache.
+      - name: Publish the binary cache as a release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tar -c --zstd -f binary-cache.tar.zst -C site .
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          # The tag is the commit, so a consumer can build the download URL from
+          # the flake revision it has locked without asking the API anything.
+          gh release create "${{ github.sha }}" \
+            --title "Kernel cache for ${{ github.sha }}" \
+            --notes "Signed Nix binary cache for \`linux-pinephone-megi\` built from ${{ github.sha }}. Extract and use as a \`file://\` substituter." \
+            || echo "release already exists, replacing the asset"
+
+          # Clobber, because the weekly rebuild republishes the same commit.
+          gh release upload "${{ github.sha }}" binary-cache.tar.zst --clobber

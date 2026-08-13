@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 {
-    description = "megi's PinePhone kernel packaged for NixOS, with a public binary cache";
+    description = "megi's PinePhone kernel packaged for NixOS, with a signed binary cache published per commit";
 
     inputs = {
         nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -62,20 +62,6 @@
                 { pkgs, ... }:
                 {
                     boot.kernelPackages = pkgs.linuxPackagesFor self.packages.${system}.linux-pinephone-megi;
-                };
-
-            # Import this too if you want the cache configured for you. Kept
-            # separate so importing the kernel never silently adds a substituter
-            # to someone's system without them asking.
-            nixosModules.binaryCache =
-                { ... }:
-                {
-                    nix.settings = {
-                        extra-substituters = [ "https://beatlink.github.io/PinePhoneKernel" ];
-                        extra-trusted-public-keys = [
-                            "pinephone-kernel-1:Bh9JYKdNDBNwefy+ZrjHKjVUR453bPDXRMZ+kO9K33w="
-                        ];
-                    };
                 };
 
             formatter.${system} = pkgs.nixfmt-rfc-style;

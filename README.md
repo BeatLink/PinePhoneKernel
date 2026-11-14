@@ -2,7 +2,7 @@
 
 [![Build kernel and publish binary cache](https://github.com/BeatLink/PinePhoneKernel/actions/workflows/build.yml/badge.svg)](https://github.com/BeatLink/PinePhoneKernel/actions/workflows/build.yml)
 
-<a href="https://liberapay.com/BeatLink/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a>
+<a href="https://liberapay.com/BeatLink/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a> <a href="https://ko-fi.com/I4V52ANK6N"><img alt="Support me on Ko-fi" src="https://ko-fi.com/img/githubbutton_sm.svg"></a>
 
 [megi&#39;s kernel](https://codeberg.org/megi/linux) — the tree postmarketOS ships —
 packaged as a NixOS flake, with a **signed binary cache published per commit** so

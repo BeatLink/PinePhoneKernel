@@ -142,3 +142,16 @@ jobs:
 
           # Clobber, because the weekly rebuild republishes the same commit.
           gh release upload "$tag" binary-cache.tar.zst --clobber
+
+  # GitHub disables a scheduled workflow once its repository has gone 60 days
+  # without a commit, and a disabled workflow ignores pushes too: from October
+  # 2026 the weekly rebuild stopped, and the next commit published no cache at
+  # all, so consumers locked to it had nothing to download. This re-enables
+  # the workflow ahead of that deadline instead of making dummy commits.
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: liskin/gh-workflow-keepalive@v1
